@@ -1,0 +1,93 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.9-management
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+    healthcheck:
+      test: [ "CMD", "rabbitmqctl", "status" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - backend
+
+  postgres_data:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: data_user
+      POSTGRES_PASSWORD: data_pass
+      POSTGRES_DB: co2_data
+    ports:
+      - "5432:5432"
+    networks:
+      - backend
+
+  gateway:
+    build: ./gateway
+    ports:
+      - "80:80"
+    depends_on:
+      - data_collector
+      - data_storage
+      - analytics
+      - notification
+    networks:
+      - backend
+
+  data_collector:
+    build: ./data_collector
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: user
+      RABBITMQ_PASS: password
+    depends_on:
+      rabbitmq:
+          condition: service_healthy
+    networks:
+      - backend
+
+  data_storage:
+    build: ./data_storage
+    environment:
+      POSTGRES_HOST: postgres_data
+      POSTGRES_USER: data_user
+      POSTGRES_PASSWORD: data_pass
+      POSTGRES_DB: co2_data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - backend
+
+  analytics:
+    build: ./analytics
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: user
+      RABBITMQ_PASS: password
+      STORAGE_HOST: data_storage
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - backend
+
+  notification:
+    build: ./notification
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: user
+      RABBITMQ_PASS: password
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - backend
+
+networks:
+  backend:
